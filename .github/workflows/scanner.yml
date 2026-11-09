@@ -2,7 +2,7 @@ name: BIST Anlik Saatlik Sinyal Tarayici
 
 on:
   schedule:
-    - cron: '0,30 7-15 * * 1-5'
+    - cron: '*/5 7-15 * * 1-5'
   workflow_dispatch:
 
 jobs:
