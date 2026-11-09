@@ -27,7 +27,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Botu Calistir
-        run: python scanner.py
+        run: python scanner.py --test
 
       - name: Pozisyonlari Kaydet ve Pushla
         run: |
