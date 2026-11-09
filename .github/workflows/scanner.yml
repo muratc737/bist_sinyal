@@ -4,12 +4,12 @@ import requests
 import yfinance as yf
 import pandas as pd
 
-# Telegram Bilgileri (Token ve Chat ID'ni tırnak içine yazabilirsin)
-TOKEN = "BURAYA_BOT_TOKENINI_YAZ"
-CHAT_ID = "BURAYA_CHAT_ID_YAZ"
+# Telegram Bilgileri (Bilgilerin eklenmiştir)
+TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
+CHAT_ID = "8218088218"
 
 def send_telegram(message):
-    if not TOKEN or "BURAYA" in TOKEN:
+    if not TOKEN:
         print("Telegram token veya chat id eksik!")
         return
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
