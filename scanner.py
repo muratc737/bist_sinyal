@@ -1,5 +1,5 @@
 """
-BIST 15 dakikalık gün içi sinyal botu (BIST Doğrudan Veri Kaynağı + BIST 500 Tam Liste)
+BIST 15 dakikalık gün içi sinyal botu (BIST 500 Tam Liste + Backtest Desteği)
 """
 
 import bisect
@@ -85,7 +85,8 @@ COST = 0.001
 SLIP = 0.001
 
 TZ = ZoneInfo("Europe/Istanbul")
-STATE_FILE = Path(__file__).with_name("pozisyonlar.json")
+STATE_FILE = Path(__file__).with_name("positions.json")
+
 TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
 CHAT_ID = "8218088218"
 
@@ -101,23 +102,11 @@ def send(msg: str) -> None:
         pass
 
 
-def fetch_bist_data(ticker: str) -> pd.DataFrame:
-    # Borsa İstanbul doğrudan veri akışı uç noktası (İş Yatırım / BIST entegre API köprüsü)
-    clean_symbol = ticker.replace(".IS", "")
-    url = f"https://www.isyatirim.com.tr/_layouts/15/IsYatirim.Website/Common/Data.aspx/HissePazarlama?hisse={clean_symbol}"
-    # Alternatif yedek doğrudan BIST veri akışı
-    alt_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=15m&range=30d"
-    
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+def fetch_bist_data(ticker: str, period: str = "30d") -> pd.DataFrame:
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=15m&range={period}"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        # Önce doğrudan BIST kaynaklı kurumsal uç noktayı dener
-        res = requests.get(url, headers=headers, timeout=8)
-        if res.status_code == 200 and "application/json" in res.headers.get("content-type", ""):
-            # İş Yatırım veya benzeri kurumsal BIST yapısı gelirse işlenir
-            pass
-        
-        # Garanti ve kesintisiz BIST 15m barları için ana BIST veri köprüsü
-        res = requests.get(alt_url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=10)
         if res.status_code != 200:
             return pd.DataFrame()
         data = res.json()
@@ -299,6 +288,51 @@ def handle_open_position(t: str, p: dict, df: pd.DataFrame, now: datetime, gun: 
     return False
 
 
+def run_backtest() -> None:
+    print(f"BIST 500 geçmiş veriler ile Backtest çalıştırılıyor...")
+    all_R, all_days = [], set()
+    for t in HISSELER:
+        try:
+            df = add_ind(fetch_bist_data(t, period="59d"))
+            if df.empty:
+                continue
+            dok = DailyOK(fetch_bist_daily(t))
+        except Exception:
+            continue
+        pos, girilen, trades = None, set(), []
+        for i in range(len(df)):
+            r = df.iloc[i]
+            ts = df.index[i]
+            all_days.add(ts.date())
+            if pos is not None:
+                px, _ = step_position(pos, float(r["Open"]), float(r["High"]), float(r["Low"]),
+                                     float(r["atr"]) if pd.notna(r["atr"]) else np.nan)
+                if px is None and (ts + timedelta(minutes=BAR_MIN)).time() >= FLAT_TIME:
+                    px = float(r["Close"])
+                if px is not None:
+                    cost_r = 2 * (COST + SLIP) * pos["giris"] / pos["risk"]
+                    trades.append((px - pos["giris"]) / pos["risk"] - cost_r)
+                    pos = None
+                continue
+            if (ts.date(), t) in girilen:
+                continue
+            sig = entry_signal(df, i, dok)
+            if sig:
+                pos = new_position(sig, ts)
+                girilen.add((ts.date(), t))
+        a = np.array(trades)
+        if len(a):
+            w, lo = a[a > 0], a[a <= 0]
+            pf = w.sum() / abs(lo.sum()) if lo.sum() < 0 else float("inf")
+            print(f"{t}: {len(a)} işlem | kazanma {len(w)/len(a):.0%} | ort. {a.mean():+.2f}R | toplam {a.sum():+.1f}R")
+        all_R.extend(trades)
+    if all_R:
+        a = np.array(all_R)
+        w, lo = a[a > 0], a[a <= 0]
+        pf = w.sum() / abs(lo.sum()) if lo.sum() < 0 else float("inf")
+        print(f"\nTOPLAM ÖZET: {len(a)} işlem / {len(all_days)} gün | kazanma {len(w)/len(a):.0%} | ort. {a.mean():+.2f}R | toplam {a.sum():+.1f}R | Profit Factor: {pf:.2f}")
+
+
 def scan(force: bool = False, now: datetime = None) -> None:
     now = now or datetime.now(TZ)
     if not force and (now.weekday() >= 5 or not (MARKET_OPEN <= now.time() <= MARKET_CLOSE)):
@@ -319,7 +353,7 @@ def scan(force: bool = False, now: datetime = None) -> None:
 
     for t in HISSELER:
         try:
-            raw_df = fetch_bist_data(t)
+            raw_df = fetch_bist_data(t, period="30d")
             if raw_df.empty:
                 continue
             df = add_ind(closed_bars(raw_df, now))
@@ -379,7 +413,9 @@ def scan(force: bool = False, now: datetime = None) -> None:
 
 
 def main() -> None:
-    if "--test" in sys.argv:
+    if "--backtest" in sys.argv:
+        run_backtest()
+    elif "--test" in sys.argv:
         send("✅ BIST 500 gün içi botu test mesajı")
     else:
         scan(force="--force" in sys.argv)
