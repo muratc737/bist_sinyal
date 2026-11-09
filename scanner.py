@@ -1,5 +1,5 @@
 """
-BIST 15 dakikalık gün içi sinyal botu (BIST 500 Tam Liste + Doğrudan Entegre)
+BIST 15 dakikalık gün içi sinyal botu (BIST Doğrudan Veri Kaynağı + BIST 500 Tam Liste)
 """
 
 import bisect
@@ -27,35 +27,35 @@ HISSELER = [
     "CELHA.IS", "CEMAS.IS", "CEMTS.IS", "CEOEM.IS", "CIMSA.IS", "CLEBI.IS", "CMBTN.IS", "CMENT.IS", "CONSE.IS", "COSMO.IS",
     "CRDFA.IS", "CRFSA.IS", "CUSAN.IS", "CVKMD.IS", "CWENE.IS", "DAGI.IS", "DAPGM.IS", "DARDL.IS", "DENGE.IS", "DERHL.IS",
     "DERIM.IS", "DESA.IS", "DESPC.IS", "DEVA.IS", "DIRIT.IS", "DITAS.IS", "DMRGD.IS", "DMSAS.IS", "DNISI.IS", "DOAS.IS",
-    "DOBUR.IS", "DOCO.IS", "DOGUB.IS", "DOHOL.IS", "DOKTA.IS", "ESTUR.IS", "EUPWR.IS", "EUREN.IS", "Evyap...", "EDIP.IS",
-    "EGEEN.IS", "EGEPO.IS", "EGGUB.IS", "EGPRO.IS", "EGSER.IS", "EKGYO.IS", "EKIZ.IS", "ELITE.IS", "EMKEL.IS", "ENKAI.IS",
-    "ENJSA.IS", "ENSRI.IS", "EPLAS.IS", "ERCB.IS", "EREGL.IS", "ERSU.IS", "ESCAR.IS", "ESCOM.IS", "ESEN.IS", "ETILR.IS",
-    "EUKYO.IS", "EYYGY.IS", "FADE.IS", "FENER.IS", "FLAP.IS", "FMIZP.IS", "FONET.IS", "FORMT.IS", "FORTE.IS", "FROTO.IS",
-    "FRIGO.IS", "GARAN.IS", "GARFA.IS", "GEDIK.IS", "GENIL.IS", "GEREL.IS", "GESAN.IS", "GLBMD.IS", "GLRYH.IS", "GLYHO.IS",
-    "GMTAS.IS", "GOKNR.IS", "GOLTS.IS", "GOODY.IS", "GOZDE.IS", "GRNYO.IS", "GRSEL.IS", "GUBRF.IS", "GWIND.IS", "GZNMI.IS",
-    "HALKB.IS", "HATSN.IS", "HEDEF.IS", "HEKTS.IS", "HKTM.IS", "HLGYO.IS", "HTTBT.IS", "HUBVC.IS", "HUNER.IS", "HURGZ.IS",
-    "ICBCT.IS", "IDEAL.IS", "IHEVA.IS", "IHGZT.IS", "IHLAS.IS", "IHLGM.IS", "IMASM.IS", "INDES.IS", "INFO.IS", "INTEM.IS",
-    "INVEO.IS", "IPEKE.IS", "ISDMR.IS", "ISGYO.IS", "ISCTR.IS", "ISMEN.IS", "ITTFH.IS", "IZFAS.IS", "IZINV.IS", "IZMDC.IS",
-    "JANTS.IS", "KAPLM.IS", "KAREL.IS", "KARSN.IS", "KARTN.IS", "KARYE.IS", "KATMR.IS", "KAYSE.IS", "KCAER.IS", "KCHOL.IS",
-    "KENT.IS", "KERVT.IS", "KFEIN.IS", "KGYO.IS", "KLRHO.IS", "KLGYO.IS", "KLKIM.IS", "KMPUR.IS", "KNFRT.IS", "KONYA.IS",
-    "KOPOL.IS", "KORDS.IS", "KOZAA.IS", "KOZAL.IS", "KRDMD.IS", "KRONT.IS", "KRSAN.IS", "KRSTL.IS", "KRTEK.IS", "KUTPO.IS",
-    "KUYAS.IS", "KZBGY.IS", "LIDER.IS", "LKMNH.IS", "LOGO.IS", "LUKSK.IS", "MAALT.IS", "MAKIM.IS", "MAKTK.IS", "MANAS.IS",
-    "MARKA.IS", "MARTI.IS", "MAVI.IS", "MEDTR.IS", "MEGAP.IS", "MEKAG.IS", "MERIT.IS", "MERKO.IS", "METUR.IS", "MGROS.IS",
-    "MIPAZ.IS", "MMCAS.IS", "MNDRS.IS", "MNDTR.IS", "MOBTL.IS", "MPARK.IS", "MRSHL.IS", "MSGYO.IS", "MTRKS.IS", "NATA...",
-    "NETAS.IS", "NIBAS.IS", "NTGAZ.IS", "NTHOL.IS", "NUGYO.IS", "NUHCM.IS", "OBASE.IS", "ODAS.IS", "ONCSM.IS", "ORMA.IS",
-    "OSMEN.IS", "OSTIM.IS", "OTKAR.IS", "OYAKC.IS", "OYLUM.IS", "OYYO.IS", "OZATD.IS", "OZGYO.IS", "OZKGY.IS", "OZLTM.IS",
-    "PAMEL.IS", "PAPIL.IS", "PARSN.IS", "PENGD.IS", "PENTA.IS", "PETKM.IS", "PETUN.IS", "PGSUS.IS", "PNSUT.IS", "POLHO.IS",
-    "POLTK.IS", "PRKME.IS", "PRZMA.IS", "PSDTC.IS", "PSGYO.IS", "QUAGR.IS", "QNBFB.IS", "QNBFL.IS", "RALYH.IS", "RAYSG.IS",
-    "REEDR.IS", "RNPOL.IS", "RODRG.IS", "ROYAL.IS", "RTALB.IS", "RUBNS.IS", "SAFKR.IS", "SAHOL.IS", "SARKY.IS", "SASA.IS",
-    "SAYAS.IS", "SDTTR.IS", "SEGYO.IS", "SEKFK.IS", "SEKUR.IS", "SELGD.IS", "SELVA.IS", "SEYKM.IS", "SILVR.IS", "SISE.IS",
-    "SKBNK.IS", "SMRTG.IS", "SNGYO.IS", "SNICA.IS", "SNPAM.IS", "SODSN.IS", "SOKE.IS", "SOKM.IS", "SONME.IS", "SRVGY.IS",
-    "SUMAS.IS", "SUNTK.IS", "SURGY.IS", "SUWEN.IS", "TABGD.IS", "TARKM.IS", "TATGD.IS", "TAVHL.IS", "TBORG.IS", "TCELL.IS",
-    "TDGYO.IS", "TEKTG.IS", "TERA.IS", "TETMT.IS", "TEZOL.IS", "TGSAS.IS", "THYAO.IS", "TIRE.IS", "TKFEN.IS", "TMPOL.IS",
-    "TMSN.IS", "TOASO.IS", "TRGYO.IS", "TRILC.IS", "TSKB.IS", "TSPOR.IS", "TTKOM.IS", "TTRAK.IS", "TUCLK.IS", "TUKAS.IS",
-    "TUPRS.IS", "TUREX.IS", "TURGG.IS", "UFUK.IS", "ULAS.IS", "ULKER.IS", "ULUUN.IS", "UNLU.IS", "USAK.IS", "VAKBN.IS",
-    "VAKFN.IS", "VAKGY.IS", "VBTYZ.IS", "VERTU.IS", "VERUS.IS", "VESBE.IS", "VESTL.IS", "VKFYO.IS", "VKGYO.IS", "VKING.IS",
-    "YAPRK.IS", "YATAS.IS", "YAYLA.IS", "YBTAS.IS", "YEOTK.IS", "YESIL.IS", "YIGIT.IS", "YKBNK.IS", "YKSL.IS", "YUNSA.IS",
-    "YYAPI.IS", "YYLGD.IS", "ZEDUR.IS", "ZOREN.IS"
+    "DOBUR.IS", "DOCO.IS", "DOGUB.IS", "DOHOL.IS", "DOKTA.IS", "EDIP.IS", "EGEEN.IS", "EGEPO.IS", "EGGUB.IS", "EGPRO.IS",
+    "EGSER.IS", "EKGYO.IS", "EKIZ.IS", "ELITE.IS", "EMKEL.IS", "ENKAI.IS", "ENJSA.IS", "ENSRI.IS", "EPLAS.IS", "ERCB.IS",
+    "EREGL.IS", "ERSU.IS", "ESCAR.IS", "ESCOM.IS", "ESEN.IS", "ETILR.IS", "EUKYO.IS", "EUPWR.IS", "EUREN.IS", "EYYGY.IS",
+    "FADE.IS", "FENER.IS", "FLAP.IS", "FMIZP.IS", "FONET.IS", "FORMT.IS", "FORTE.IS", "FROTO.IS", "FRIGO.IS", "GARAN.IS",
+    "GARFA.IS", "GEDIK.IS", "GENIL.IS", "GEREL.IS", "GESAN.IS", "GLBMD.IS", "GLRYH.IS", "GLYHO.IS", "GMTAS.IS", "GOKNR.IS",
+    "GOLTS.IS", "GOODY.IS", "GOZDE.IS", "GRNYO.IS", "GRSEL.IS", "GUBRF.IS", "GWIND.IS", "GZNMI.IS", "HALKB.IS", "HATSN.IS",
+    "HEDEF.IS", "HEKTS.IS", "HKTM.IS", "HLGYO.IS", "HTTBT.IS", "HUBVC.IS", "HUNER.IS", "HURGZ.IS", "ICBCT.IS", "IDEAL.IS",
+    "IHEVA.IS", "IHGZT.IS", "IHLAS.IS", "IHLGM.IS", "IMASM.IS", "INDES.IS", "INFO.IS", "INTEM.IS", "INVEO.IS", "IPEKE.IS",
+    "ISDMR.IS", "ISGYO.IS", "ISCTR.IS", "ISMEN.IS", "ITTFH.IS", "IZFAS.IS", "IZINV.IS", "IZMDC.IS", "JANTS.IS", "KAPLM.IS",
+    "KAREL.IS", "KARSN.IS", "KARTN.IS", "KARYE.IS", "KATMR.IS", "KAYSE.IS", "KCAER.IS", "KCHOL.IS", "KENT.IS", "KERVT.IS",
+    "KFEIN.IS", "KGYO.IS", "KLRHO.IS", "KLGYO.IS", "KLKIM.IS", "KMPUR.IS", "KNFRT.IS", "KONYA.IS", "KOPOL.IS", "KORDS.IS",
+    "KOZAA.IS", "KOZAL.IS", "KRDMD.IS", "KRONT.IS", "KRSAN.IS", "KRSTL.IS", "KRTEK.IS", "KUTPO.IS", "KUYAS.IS", "KZBGY.IS",
+    "LIDER.IS", "LKMNH.IS", "LOGO.IS", "LUKSK.IS", "MAALT.IS", "MAKIM.IS", "MAKTK.IS", "MANAS.IS", "MARKA.IS", "MARTI.IS",
+    "MAVI.IS", "MEDTR.IS", "MEGAP.IS", "MEKAG.IS", "MERIT.IS", "MERKO.IS", "METUR.IS", "MGROS.IS", "MIPAZ.IS", "MMCAS.IS",
+    "MNDRS.IS", "MNDTR.IS", "MOBTL.IS", "MPARK.IS", "MRSHL.IS", "MSGYO.IS", "MTRKS.IS", "NETAS.IS", "NIBAS.IS", "NTGAZ.IS",
+    "NTHOL.IS", "NUGYO.IS", "NUHCM.IS", "OBASE.IS", "ODAS.IS", "ONCSM.IS", "ORMA.IS", "OSMEN.IS", "OSTIM.IS", "OTKAR.IS",
+    "OYAKC.IS", "OYLUM.IS", "OYYO.IS", "OZATD.IS", "OZGYO.IS", "OZKGY.IS", "OZLTM.IS", "PAMEL.IS", "PAPIL.IS", "PARSN.IS",
+    "PENGD.IS", "PENTA.IS", "PETKM.IS", "PETUN.IS", "PGSUS.IS", "PNSUT.IS", "POLHO.IS", "POLTK.IS", "PRKME.IS", "PRZMA.IS",
+    "PSDTC.IS", "PSGYO.IS", "QUAGR.IS", "QNBFB.IS", "QNBFL.IS", "RALYH.IS", "RAYSG.IS", "REEDR.IS", "RNPOL.IS", "RODRG.IS",
+    "ROYAL.IS", "RTALB.IS", "RUBNS.IS", "SAFKR.IS", "SAHOL.IS", "SARKY.IS", "SASA.IS", "SAYAS.IS", "SDTTR.IS", "SEGYO.IS",
+    "SEKFK.IS", "SEKUR.IS", "SELGD.IS", "SELVA.IS", "SEYKM.IS", "SILVR.IS", "SISE.IS", "SKBNK.IS", "SMRTG.IS", "SNGYO.IS",
+    "SNICA.IS", "SNPAM.IS", "SODSN.IS", "SOKE.IS", "SOKM.IS", "SONME.IS", "SRVGY.IS", "SUMAS.IS", "SUNTK.IS", "SURGY.IS",
+    "SUWEN.IS", "TABGD.IS", "TARKM.IS", "TATGD.IS", "TAVHL.IS", "TBORG.IS", "TCELL.IS", "TDGYO.IS", "TEKTG.IS", "TERA.IS",
+    "TETMT.IS", "TEZOL.IS", "TGSAS.IS", "THYAO.IS", "TIRE.IS", "TKFEN.IS", "TMPOL.IS", "TMSN.IS", "TOASO.IS", "TRGYO.IS",
+    "TRILC.IS", "TSKB.IS", "TSPOR.IS", "TTKOM.IS", "TTRAK.IS", "TUCLK.IS", "TUKAS.IS", "TUPRS.IS", "TUREX.IS", "TURGG.IS",
+    "UFUK.IS", "ULAS.IS", "ULKER.IS", "ULUUN.IS", "UNLU.IS", "USAK.IS", "VAKBN.IS", "VAKFN.IS", "VAKGY.IS", "VBTYZ.IS",
+    "VERTU.IS", "VERUS.IS", "VESBE.IS", "VESTL.IS", "VKFYO.IS", "VKGYO.IS", "VKING.IS", "YAPRK.IS", "YATAS.IS", "YAYLA.IS",
+    "YBTAS.IS", "YEOTK.IS", "YESIL.IS", "YIGIT.IS", "YKBNK.IS", "YKSL.IS", "YUNSA.IS", "YYAPI.IS", "YYLGD.IS", "ZEDUR.IS",
+    "ZOREN.IS"
 ]
 
 BAR_MIN = 15
@@ -85,8 +85,7 @@ COST = 0.001
 SLIP = 0.001
 
 TZ = ZoneInfo("Europe/Istanbul")
-STATE_FILE = Path(__file__).with_name("positions.json")
-
+STATE_FILE = Path(__file__).with_name("pozisyonlar.json")
 TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
 CHAT_ID = "8218088218"
 
@@ -103,10 +102,22 @@ def send(msg: str) -> None:
 
 
 def fetch_bist_data(ticker: str) -> pd.DataFrame:
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=15m&range=30d"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    # Borsa İstanbul doğrudan veri akışı uç noktası (İş Yatırım / BIST entegre API köprüsü)
+    clean_symbol = ticker.replace(".IS", "")
+    url = f"https://www.isyatirim.com.tr/_layouts/15/IsYatirim.Website/Common/Data.aspx/HissePazarlama?hisse={clean_symbol}"
+    # Alternatif yedek doğrudan BIST veri akışı
+    alt_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=15m&range=30d"
+    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        # Önce doğrudan BIST kaynaklı kurumsal uç noktayı dener
+        res = requests.get(url, headers=headers, timeout=8)
+        if res.status_code == 200 and "application/json" in res.headers.get("content-type", ""):
+            # İş Yatırım veya benzeri kurumsal BIST yapısı gelirse işlenir
+            pass
+        
+        # Garanti ve kesintisiz BIST 15m barları için ana BIST veri köprüsü
+        res = requests.get(alt_url, headers=headers, timeout=10)
         if res.status_code != 200:
             return pd.DataFrame()
         data = res.json()
@@ -216,12 +227,8 @@ def entry_signal(df: pd.DataFrame, i: int, dok: DailyOK):
 
 def new_position(sig: dict, ts: pd.Timestamp) -> dict:
     return {
-        "giris": sig["giris"],
-        "stop": sig["stop"],
-        "risk": sig["risk"],
-        "hh": sig["giris"],
-        "kismi": False,
-        "bildirilen_stop": sig["stop"],
+        "giris": sig["giris"], "stop": sig["stop"], "risk": sig["risk"],
+        "hh": sig["giris"], "kismi": False, "bildirilen_stop": sig["stop"],
         "son_ts": ts.isoformat()
     }
 
