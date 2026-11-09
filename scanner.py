@@ -1,5 +1,5 @@
 """
-BIST 15 dakikalık gün içi sinyal botu (BIST 500 Tam Liste + Backtest Desteği)
+BIST 15 dakikalık gün içi sinyal botu (BIST 500 Tam Liste + Telegram Destekli Backtest)
 """
 
 import bisect
@@ -320,17 +320,21 @@ def run_backtest() -> None:
             if sig:
                 pos = new_position(sig, ts)
                 girilen.add((ts.date(), t))
-        a = np.array(trades)
-        if len(a):
-            w, lo = a[a > 0], a[a <= 0]
-            pf = w.sum() / abs(lo.sum()) if lo.sum() < 0 else float("inf")
-            print(f"{t}: {len(a)} işlem | kazanma {len(w)/len(a):.0%} | ort. {a.mean():+.2f}R | toplam {a.sum():+.1f}R")
         all_R.extend(trades)
+    
     if all_R:
         a = np.array(all_R)
         w, lo = a[a > 0], a[a <= 0]
         pf = w.sum() / abs(lo.sum()) if lo.sum() < 0 else float("inf")
-        print(f"\nTOPLAM ÖZET: {len(a)} işlem / {len(all_days)} gün | kazanma {len(w)/len(a):.0%} | ort. {a.mean():+.2f}R | toplam {a.sum():+.1f}R | Profit Factor: {pf:.2f}")
+        msg = (f"📊 BIST 500 Backtest Sonucu:\n\n"
+               f"• Toplam İşlem: {len(a)}\n"
+               f"• Kazanma Oranı: {len(w)/len(a):.0%}\n"
+               f"• İşlem Başı Ortalama: {a.mean():+.2f}R\n"
+               f"• Toplam R: {a.sum():+.1f}R\n"
+               f"• Profit Factor: {pf:.2f}")
+        send(msg)
+    else:
+        send("📊 BIST 500 Backtest tamamlandı: Seçilen aralıkta kriterlere uyan işlem bulunamadı.")
 
 
 def scan(force: bool = False, now: datetime = None) -> None:
@@ -344,82 +348,3 @@ def scan(force: bool = False, now: datetime = None) -> None:
     today = str(now.date())
     gun = state.get("gun")
     if not gun or gun.get("tarih") != today:
-        gun = {"tarih": today, "r": 0.0, "girilen": [], "kilit": False}
-    poz = state.setdefault("pozisyon", {})
-    son_bar = state.setdefault("son_bar", {})
-    state["gun"] = gun
-
-    print(f"BIST 500 tam havuzu taranıyor ({len(HISSELER)} hisse)...")
-
-    for t in HISSELER:
-        try:
-            raw_df = fetch_bist_data(t, period="30d")
-            if raw_df.empty:
-                continue
-            df = add_ind(closed_bars(raw_df, now))
-            if len(df) < DONCHIAN_N + ATR_N + 2:
-                continue
-            
-            daily_df = fetch_bist_daily(t)
-            if daily_df.empty:
-                continue
-            dok = DailyOK(daily_df)
-        except Exception:
-            continue
-
-        if t in poz:
-            try:
-                if handle_open_position(t, poz[t], df, now, gun):
-                    del poz[t]
-            except Exception:
-                pass
-            continue
-
-        try:
-            i = len(df) - 1
-            ts = df.index[i]
-            bar_end = ts + timedelta(minutes=BAR_MIN)
-            if son_bar.get(t) == ts.isoformat():
-                continue
-            son_bar[t] = ts.isoformat()
-            if (now - bar_end) > timedelta(minutes=MAX_BAR_AGE_MIN):
-                continue
-            if now.time() >= FLAT_TIME or t in gun["girilen"] or len(poz) >= MAX_POZISYON:
-                continue
-            if gun["r"] <= -GUNLUK_MAX_KAYIP_R:
-                if not gun["kilit"]:
-                    gun["kilit"] = True
-                    send(f"🛑 Günlük kayıp limiti doldu.")
-                continue
-
-            sig = entry_signal(df, i, dok)
-            if not sig:
-                continue
-            lot = lot_hesapla(sig["giris"], sig["risk"])
-            if lot < 1:
-                continue
-            poz[t] = new_position(sig, ts)
-            gun["girilen"].append(t)
-            
-            send(f"🟢 Murat, {t} için AL sinyali (BIST 500 Tarama, {bar_end:%H:%M})\n\n"
-                 f"• Giriş referansı: {sig['giris']:.2f} TL\n"
-                 f"• İlk STOP: {sig['stop']:.2f} TL\n"
-                 f"• Önerilen adet: {lot}")
-        except Exception:
-            continue
-
-    if json.dumps(state, sort_keys=True) != before:
-        STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def main() -> None:
-    if "--backtest" in sys.argv:
-        run_backtest()
-    elif "--test" in sys.argv:
-        send("✅ BIST 500 gün içi botu test mesajı")
-    else:
-        scan(force="--force" in sys.argv)
-
-
-if __name__ == "__main__":
-    main()
