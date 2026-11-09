@@ -1,59 +1,21 @@
-import sys
-import os
-import requests
-import yfinance as yf
-import pandas as pd
+name: BIST Anlik Saatlik Sinyal Tarayici
 
-# Telegram Bilgileri (Bilgilerin eklenmiştir)
-TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
-CHAT_ID = "8218088218"
+on:
+  schedule:
+    - cron: '*/5 7-15 * * 1-5'
+  workflow_dispatch:
 
-def send_telegram(message):
-    if not TOKEN:
-        print("Telegram token veya chat id eksik!")
-        return
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message}
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code != 200:
-            print(f"Telegram hata kodu: {response.text}")
-    except Exception as e:
-        print(f"Telegram bağlantı hatası: {e}")
-
-def run_scan():
-    send_telegram("🤖 BIST Tarayıcı: GitHub Actions başarıyla çalıştı ve bağlantı kuruldu!")
-    print("Tarama başlatılıyor...")
-    
-    hisseler = ["THYAO.IS", "EREGL.IS", "GARAN.IS", "ASELS.IS", "BIMAS.IS"]
-    sinyaller = []
-    
-    for hisse in hisseler:
-        try:
-            df = yf.download(hisse, period="5d", interval="1h", progress=False)
-            if df.empty or len(df) < 20:
-                continue
-            
-            high_20 = df['High'].rolling(window=20).max()
-            current_close = df['Close'].iloc[-1]
-            prev_high = high_20.iloc[-2]
-            
-            if hasattr(current_close, "item"):
-                current_close = current_close.item()
-            if hasattr(prev_high, "item"):
-                prev_high = prev_high.item()
-
-            if current_close > prev_high:
-                sinyaller.append(hisse)
-        except Exception as e:
-            print(f"{hisse} taranırken hata: {e}")
-
-    if sinyaller:
-        mesaj = f"🚨 Donchian Kırılım Sinyali!\n\nHisseler:\n" + "\n".join(sinyaller)
-        send_telegram(mesaj)
-        print("Sinyaller gönderildi:", sinyaller)
-    else:
-        print("Şartı sağlayan kırılım bulunamadı.")
-
-if __name__ == "__main__":
-    run_scan()
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python Kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          update-environment: false
+      - name: Paketleri Yükle
+        run: pip install -r requirements.txt
+      - name: Anlık Taramayı Çalıştır
+        run: python scanner.py scan
