@@ -1,109 +1,59 @@
-import argparse, datetime as dt, json, os, sys, time
-from pathlib import Path
-from zoneinfo import ZoneInfo
+import sys
+import os
+import requests
+import yfinance as yf
 import pandas as pd
-from backtest import evaluate, liquid, print_report
-from strategies import STRATEGIES, atr
 
-BASE = Path(__file__).parent
-TICKERS = BASE / "tickers.txt"
-REPORT = BASE / "strategy_report.json"
-POSITIONS = BASE / "positions.json"
-TZ = ZoneInfo("Europe/Istanbul")
+# Telegram Bilgileri
+TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
+CHAT_ID = "8218088218"
 
-def load_tickers():
-    seen, out = set(), []
-    for line in TICKERS.read_text(encoding="utf-8").splitlines():
-        t = line.split("#")[0].strip().upper()
-        if t and t not in seen:
-            seen.add(t)
-            out.append(t)
-    return out
+def send_telegram(message):
+    if not TOKEN:
+        print("Telegram token veya chat id eksik!")
+        return
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            print(f"Telegram hata kodu: {response.text}")
+    except Exception as e:
+        print(f"Telegram bağlantı hatası: {e}")
 
-def download(tickers, years=3, chunk=80):
-    import yfinance as yf
-    data, missing = {}, []
-    for i in range(0, len(tickers), chunk):
-        part = tickers[i:i + chunk]
-        raw = yf.download([t + ".IS" for t in part], period=f"{years}y", interval="1d", auto_adjust=True, group_by="ticker", threads=True, progress=False)
-        for t in part:
-            try: df = raw[t + ".IS"][["Open", "High", "Low", "Close", "Volume"]].dropna()
-            except: continue
-            if len(df) >= 250:
-                if df.index.tz is not None: df.index = df.index.tz_localize(None)
-                data[t] = df
-    return data
-
-def drop_incomplete(df):
-    now = dt.datetime.now(TZ)
-    if df.index[-1].date() == now.date() and now.time() < dt.time(18, 30):
-        return df.iloc[:-1]
-    return df
-
-def send_telegram(text):
-    token, chat = os.getenv("TELEGRAM_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat:
-        print("[Telegram ayarlı değil]\n" + text)
-        return False
-    import requests
-    requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id": chat, "text": text}, timeout=20)
-    time.sleep(0.5)
-    return True
-
-def cmd_backtest():
-    data = download(load_tickers(), years=6)
-    report = evaluate(data, save_path=REPORT)
-    print_report(report)
-
-def cmd_scan():
-    # Backtest raporu olmasa bile donchian_breakout stratejisini doğrudan zorla çalıştırıyoruz
-    enabled = list(STRATEGIES.keys())
-
-    data = download(load_tickers(), years=3)
-    pos = json.loads(POSITIONS.read_text(encoding="utf-8")) if POSITIONS.exists() else {}
-    buys = sells = 0
-
-    for t, df in data.items():
-        df = drop_incomplete(df)
-        if len(df) < 250: continue
-        close, a, last_day = float(df["Close"].iloc[-1]), float(atr(df).iloc[-1]), df.index[-1]
-        
-        for name in enabled:
-            spec = STRATEGIES[name]
-            key = f"{name}|{t}"
-            en, ex = spec["fn"](df)
+def run_scan():
+    send_telegram("🤖 BIST Tarayıcı: GitHub Actions başarıyla çalıştı ve bağlantı kuruldu!")
+    print("Tarama başlatılıyor...")
+    
+    hisseler = ["THYAO.IS", "EREGL.IS", "GARAN.IS", "ASELS.IS", "BIMAS.IS"]
+    sinyaller = []
+    
+    for hisse in hisseler:
+        try:
+            df = yf.download(hisse, period="5d", interval="1h", progress=False)
+            if df.empty or len(df) < 20:
+                continue
             
-            if key in pos:
-                p = pos[key]
-                held = int((df.index > pd.Timestamp(p["date"])).sum())
-                reason = None
-                
-                if close <= p["stop"]: reason = f"Zarar Kes (Stop) Seviyesine Değdi ({p['stop']:.2f} TL)"
-                elif bool(ex.iloc[-1]): reason = "Trend Zayıfladı / Kanal Tabanı Kırıldı"
-                elif held >= spec["max_hold"]: reason = "Maksimum Bekleme Süresi Doldu"
-                
-                if reason:
-                    chg = (close / p["ref"] - 1) * 100
-                    send_telegram(f"🔴 Murat, elindeki {t} hissesini sat!\n\n• Kapanış: {close:.2f} TL\n• Performans: %{chg:+.1f}\n• Sebep: {reason}")
-                    del pos[key]
-                    sells += 1
+            high_20 = df['High'].rolling(window=20).max()
+            current_close = df['Close'].iloc[-1]
+            prev_high = high_20.iloc[-2]
             
-            elif bool(en.iloc[-1]) and liquid(df):
-                stop = close - spec["stop_atr"] * a
-                pos[key] = dict(date=str(last_day.date()), ref=close, stop=stop)
-                send_telegram(f"🟢 Murat, {t} hissesinde Donchian kırılımı var, al!\n\n• Son Fiyat: {close:.2f} TL\n• Stop Önerisi: {stop:.2f} TL\n\nAldıktan sonra mutlaka stop koy.")
-                buys += 1
+            if hasattr(current_close, "item"):
+                current_close = current_close.item()
+            if hasattr(prev_high, "item"):
+                prev_high = prev_high.item()
 
-    POSITIONS.write_text(json.dumps(pos, indent=2), encoding="utf-8")
-    send_telegram(f"📊 Tarama bitti Murat. {buys} yeni alım fırsatı, {sells} satış uyarısı buldum.")
+            if current_close > prev_high:
+                sinyaller.append(hisse)
+        except Exception as e:
+            print(f"{hisse} taranırken hata: {e}")
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["backtest", "scan", "test-telegram"])
-    cmd = ap.parse_args().cmd
-    if cmd == "backtest": cmd_backtest()
-    elif cmd == "scan": cmd_scan()
-    else: send_telegram("✅ Merhaba Murat, sistemin emrinde.")
+    if sinyaller:
+        mesaj = f"🚨 Donchian Kırılım Sinyali!\n\nHisseler:\n" + "\n".join(sinyaller)
+        send_telegram(mesaj)
+        print("Sinyaller gönderildi:", sinyaller)
+    else:
+        print("Şartı sağlayan kırılım bulunamadı.")
 
 if __name__ == "__main__":
-    main()
+    run_scan()
