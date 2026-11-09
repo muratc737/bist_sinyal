@@ -2,7 +2,6 @@ name: BIST 500 Intraday Bot
 
 on:
   schedule:
-    # Türkiye saati ile seans saatleri boyunca her 15 dakikada bir (Pzt-Cum)
     - cron: "*/15 7-15 * * 1-5"
   workflow_dispatch:
 
@@ -25,14 +24,14 @@ jobs:
           python-version: "3.11"
 
       - name: Paketleri Yukle
-        run: pip install yfinance pandas numpy requests
+        run: pip install -r requirements.txt
 
       - name: Botu Calistir
-        run: python intraday_bot.py
+        run: python scanner.py
 
       - name: Pozisyonlari Kaydet ve Pushla
         run: |
           git config user.name "bist-bot"
           git config user.email "bist-bot@users.noreply.github.com"
-          git add pozisyonlar.json || true
+          git add positions.json || true
           git diff --cached --quiet || (git commit -m "otomatik pozisyon durumu" && git push)
