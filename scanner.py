@@ -22,38 +22,43 @@ def send_telegram(message):
         print(f"Telegram bağlantı hatası: {e}")
 
 def run_scan():
-    send_telegram("🤖 BIST Tarayıcı: GitHub Actions başarıyla çalıştı ve bağlantı kuruldu!")
-    print("Tarama başlatılıyor...")
+    print("15 dakikalık tarama başlatılıyor...")
     
     hisseler = ["THYAO.IS", "EREGL.IS", "GARAN.IS", "ASELS.IS", "BIMAS.IS"]
-    sinyaller = []
     
     for hisse in hisseler:
         try:
-            df = yf.download(hisse, period="5d", interval="1h", progress=False)
+            # 15 dakikalık mum verisi çekiliyor
+            df = yf.download(hisse, period="5d", interval="15m", progress=False)
             if df.empty or len(df) < 20:
                 continue
             
             high_20 = df['High'].rolling(window=20).max()
+            low_20 = df['Low'].rolling(window=20).min()
+            
             current_close = df['Close'].iloc[-1]
             prev_high = high_20.iloc[-2]
+            current_stop = low_20.iloc[-2]
             
             if hasattr(current_close, "item"):
                 current_close = current_close.item()
             if hasattr(prev_high, "item"):
                 prev_high = prev_high.item()
+            if hasattr(current_stop, "item"):
+                current_stop = current_stop.item()
 
+            # Donchian Kırılım Şartı (15m)
             if current_close > prev_high:
-                sinyaller.append(hisse)
+                mesaj = (
+                    f"🟢 Murat, {hisse} hissesinde 15m Donchian kırılımı var, al!\n\n"
+                    f"• Son Fiyat: {current_close:.2f} TL\n"
+                    f"• Stop Önerisi: {current_stop:.2f} TL\n\n"
+                    f"Aldıktan sonra mutlaka stop koy."
+                )
+                send_telegram(mesaj)
+                print(f"Sinyal gönderildi: {hisse}")
         except Exception as e:
             print(f"{hisse} taranırken hata: {e}")
-
-    if sinyaller:
-        mesaj = f"🚨 Donchian Kırılım Sinyali!\n\nHisseler:\n" + "\n".join(sinyaller)
-        send_telegram(mesaj)
-        print("Sinyaller gönderildi:", sinyaller)
-    else:
-        print("Şartı sağlayan kırılım bulunamadı.")
 
 if __name__ == "__main__":
     run_scan()
