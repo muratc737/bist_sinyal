@@ -1,9 +1,11 @@
 """
-BIST 5 Dakikalık Gün İçi Sinyal Botu (BIST 500 Tam Liste + Gecikmesiz TradingView Verisi + Anti-Ban Koruması)
+BIST 5 Dakikalık Gün İçi Sinyal Botu
+(BIST 500 Tam Liste + Gecikmesiz TradingView Verisi + Anti-Ban Koruması)
 """
 
 import bisect
 import json
+import logging
 import os
 import sys
 import time
@@ -17,6 +19,7 @@ import requests
 
 from tvDatafeed import TvDatafeed, Interval
 
+# BIST 500 Hisselerinin Tamamı
 HISSELER = [
     "ACSEL", "ADESE", "ADGYO", "AEFES", "AFYON", "AGESA", "AGHOL", "AGROT", "AGYO", "AHGAZ",
     "AKBNK", "AKCNS", "AKENR", "AKFGY", "AKFYE", "AKGRT", "AKMGY", "AKSA", "AKSEN", "AKSGY",
@@ -60,7 +63,7 @@ HISSELER = [
     "ZOREN"
 ]
 
-BAR_MIN = 5  
+BAR_MIN = 5
 DONCHIAN_N = 20
 VOL_MULT = 1.5
 ATR_N = 14
@@ -92,42 +95,51 @@ STATE_FILE = Path(__file__).with_name("positions.json")
 TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
 CHAT_ID = "8218088218"
 
-# TVDatafeed başlatılıyor (Hata loglarını gizlemek için sessiz moda alındı)
-import logging
+# tvDatafeed bağlantısı ve log susturma
 logging.getLogger("tvDatafeed.main").setLevel(logging.CRITICAL)
 
 try:
-    # Kendi hesabın varsa buraya girebilirsin: TvDatafeed(username='kullanici', password='sifre')
     tv = TvDatafeed()
-except:
+except Exception:
     tv = None
+
 
 def send(msg: str) -> None:
     print(msg, "\n")
     if not TOKEN or not CHAT_ID:
         return
     try:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                      json={"chat_id": CHAT_ID, "text": msg}, timeout=15)
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            json={"chat_id": CHAT_ID, "text": msg},
+            timeout=15
+        )
     except Exception:
         pass
+
 
 def fetch_tv_data(ticker: str, interval=Interval.in_5_minute, n_bars=60) -> pd.DataFrame:
     if not tv:
         return pd.DataFrame()
-    # Hata alınca çökmek yerine 3 kere tekrar deneme (Anti-Ban koruması)
-    for deneme in range(3):
+    for _ in range(3):
         try:
-            df = tv.get_hist(symbol=ticker, exchange='BIST', interval=interval, n_bars=n_bars)
+            df = tv.get_hist(symbol=ticker, exchange="BIST", interval=interval, n_bars=n_bars)
             if df is not None and not df.empty:
                 df = df.rename(columns={
-                    "symbol": "Symbol", "open": "Open", "high": "High", 
-                    "low": "Low", "close": "Close", "volume": "Volume"
+                    "symbol": "Symbol",
+                    "open": "Open",
+                    "high": "High",
+                    "low": "Low",
+                    "close": "Close",
+                    "volume": "Volume"
                 })
-                df.index = df.index.tz_localize("UTC").tz_convert(TZ) if df.index.tz is None else df.index.tz_convert(TZ)
+                if df.index.tz is None:
+                    df.index = df.index.tz_localize("UTC").tz_convert(TZ)
+                else:
+                    df.index = df.index.tz_convert(TZ)
                 return df.dropna()
         except Exception:
-            time.sleep(1) # Hata alırsa 1 saniye nefes al ve tekrar dene
+            time.sleep(1)
     return pd.DataFrame()
 
 
@@ -140,7 +152,8 @@ def closed_bars(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
 class DailyOK:
     def __init__(self, daily: pd.DataFrame):
         if daily.empty:
-            self.dates, self.vals = [], []
+            self.dates = []
+            self.vals = []
             return
         ok = (daily["Close"] > daily["Close"].rolling(50).mean()).shift(1)
         self.dates = [d.date() for d in daily.index]
@@ -156,7 +169,10 @@ class DailyOK:
 def add_ind(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     pc = df["Close"].shift(1)
-    tr = pd.concat([df["High"] - df["Low"], (df["High"] - pc).abs(), (df["Low"] - pc).abs()], axis=1).max(axis=1)
+    tr = pd.concat(
+        [df["High"] - df["Low"], (df["High"] - pc).abs(), (df["Low"] - pc).abs()],
+        axis=1
+    ).max(axis=1)
     df["atr"] = tr.rolling(ATR_N).mean()
     df["hh_prev"] = df["High"].rolling(DONCHIAN_N).max().shift(1)
     df["vol_avg"] = df["Volume"].rolling(DONCHIAN_N).mean().shift(1)
@@ -172,18 +188,230 @@ def entry_signal(df: pd.DataFrame, i: int, dok: DailyOK):
     r = df.iloc[i]
     ts = df.index[i]
     end = (ts + timedelta(minutes=BAR_MIN)).time()
+    
     if not (ENTRY_START <= end <= ENTRY_END):
         return None
     if any(pd.isna(r[c]) for c in ("atr", "hh_prev", "vol_avg", "vwap")):
         return None
     if not dok(ts.date()):
         return None
-    lvl, c, atr = float(r["hh_prev"]), float(r["Close"]), float(r["atr"])
-    if c <= lvl or r["Volume"] < VOL_MULT * r["vol_avg"] or c <= r["vwap"] or c - lvl > MAX_EXTEND_ATR * atr:
+        
+    lvl = float(r["hh_prev"])
+    c = float(r["Close"])
+    atr = float(r["atr"])
+    
+    if c <= lvl:
         return None
+    if r["Volume"] < VOL_MULT * r["vol_avg"]:
+        return None
+    if c <= r["vwap"]:
+        return None
+    if c - lvl > MAX_EXTEND_ATR * atr:
+        return None
+        
     risk = max(STOP_ATR * atr, MIN_STOP_PCT * c)
-    return {"giris": c, "stop": c - risk, "risk": risk, "seviye": lvl, "atr": atr}
+    return {
+        "giris": c,
+        "stop": c - risk,
+        "risk": risk,
+        "seviye": lvl,
+        "atr": atr
+    }
 
 
 def new_position(sig: dict, ts: pd.Timestamp) -> dict:
-    return {"giris": sig["giris"], "stop": sig["stop"], "
+    return {
+        "giris": sig["giris"],
+        "stop": sig["stop"],
+        "risk": sig["risk"],
+        "hh": sig["giris"],
+        "kismi": False,
+        "bildirilen_stop": sig["stop"],
+        "son_ts": ts.isoformat()
+    }
+
+
+def step_position(pos: dict, o: float, h: float, l: float, atr: float):
+    ev = []
+    if o <= pos["stop"]:
+        return o, ev
+    if l <= pos["stop"]:
+        return pos["stop"], ev
+
+    pos["hh"] = max(pos["hh"], h)
+    pr = (pos["hh"] - pos["giris"]) / pos["risk"]
+
+    if not np.isnan(atr):
+        mult = TRAIL_ATR_TIGHT if pr >= PARTIAL_R else TRAIL_ATR
+        if pr >= BE_R:
+            cand = max(pos["hh"] - mult * atr, pos["giris"] * (1 + 2 * COST))
+        else:
+            cand = pos["hh"] - mult * atr
+
+        if cand > pos["stop"]:
+            pos["stop"] = cand
+
+    if pr >= PARTIAL_R and not pos["kismi"]:
+        pos["kismi"] = True
+        ev.append("kismi")
+
+    return None, ev
+
+
+def load_state() -> dict:
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def lot_hesapla(giris: float, risk: float) -> int:
+    if risk <= 0:
+        return 0
+    return int(min(SERMAYE * RISK_YUZDE / risk, SERMAYE * MAX_POZ_YUZDE / giris))
+
+
+def handle_open_position(t: str, p: dict, df: pd.DataFrame, now: datetime, gun: dict) -> bool:
+    son = pd.Timestamp(p["son_ts"])
+    new = df[df.index > son]
+    exit_px, kismi = None, False
+
+    for ts, r in new.iterrows():
+        exit_px, ev = step_position(
+            p,
+            float(r["Open"]),
+            float(r["High"]),
+            float(r["Low"]),
+            float(r["atr"]) if pd.notna(r["atr"]) else np.nan
+        )
+        p["son_ts"] = ts.isoformat()
+        kismi = kismi or ("kismi" in ev)
+        if exit_px is not None:
+            break
+
+    if exit_px is not None:
+        R = (exit_px - p["giris"]) / p["risk"]
+        gun["r"] = round(gun["r"] + R, 2)
+        send(f"🔴 {t}: STOP/SAT.\n• Çıkış ≈ {exit_px:.2f} TL | {R:+.1f}R")
+        return True
+
+    last_close = float(df["Close"].iloc[-1])
+    if now.time() >= FLAT_TIME:
+        R = (last_close - p["giris"]) / p["risk"]
+        gun["r"] = round(gun["r"] + R, 2)
+        send(f"⏰ {t}: GÜN SONU KAPAT.")
+        return True
+
+    if kismi:
+        send(f"💰 {t}: +{PARTIAL_R:.0f}R! YARISINI SAT.")
+        p["bildirilen_stop"] = p["stop"]
+    elif p["stop"] - p["bildirilen_stop"] >= 0.002 * last_close:
+        send(f"🔄 {t}: STOP'U {p['stop']:.2f} TL'ye TAŞI.")
+        p["bildirilen_stop"] = p["stop"]
+
+    return False
+
+
+def scan(force: bool = False, now: datetime = None) -> None:
+    now = now or datetime.now(TZ)
+    if not force and (now.weekday() >= 5 or not (MARKET_OPEN <= now.time() <= MARKET_CLOSE)):
+        print("Piyasa kapalı, tarama yapılmadı.")
+        return
+
+    state = load_state()
+    today = str(now.date())
+    gun = state.get("gun", {})
+    if gun.get("tarih") != today:
+        gun = {"tarih": today, "r": 0.0, "girilen": [], "kilit": False}
+
+    poz = state.setdefault("pozisyon", {})
+    son_bar = state.setdefault("son_bar", {})
+    state["gun"] = gun
+
+    print(f"BIST 500 Taranıyor (Gecikmesiz 5 Dk, {len(HISSELER)} hisse)...")
+
+    for t in HISSELER:
+        try:
+            raw_df = fetch_tv_data(t, Interval.in_5_minute, 60)
+            if raw_df.empty:
+                time.sleep(0.4)
+                continue
+
+            df = add_ind(closed_bars(raw_df, now))
+            if len(df) < DONCHIAN_N + ATR_N + 2:
+                time.sleep(0.4)
+                continue
+
+            daily_df = fetch_tv_data(t, Interval.in_daily, 60)
+            dok = DailyOK(daily_df)
+        except Exception:
+            time.sleep(0.4)
+            continue
+
+        if t in poz:
+            try:
+                if handle_open_position(t, poz[t], df, now, gun):
+                    del poz[t]
+            except Exception:
+                pass
+            time.sleep(0.4)
+            continue
+
+        try:
+            i = len(df) - 1
+            ts = df.index[i]
+            bar_end = ts + timedelta(minutes=BAR_MIN)
+
+            if son_bar.get(t) == ts.isoformat() or (now - bar_end) > timedelta(minutes=MAX_BAR_AGE_MIN):
+                time.sleep(0.4)
+                continue
+
+            son_bar[t] = ts.isoformat()
+
+            if now.time() >= FLAT_TIME or t in gun["girilen"] or len(poz) >= MAX_POZISYON:
+                time.sleep(0.4)
+                continue
+
+            if gun["r"] <= -GUNLUK_MAX_KAYIP_R:
+                if not gun["kilit"]:
+                    gun["kilit"] = True
+                    send("🛑 Günlük kayıp limiti doldu.")
+                time.sleep(0.4)
+                continue
+
+            sig = entry_signal(df, i, dok)
+            if not sig:
+                time.sleep(0.4)
+                continue
+
+            lot = lot_hesapla(sig["giris"], sig["risk"])
+            if lot < 1:
+                time.sleep(0.4)
+                continue
+
+            poz[t] = new_position(sig, ts)
+            gun["girilen"].append(t)
+
+            send(
+                f"🟢 Murat, {t} için AL sinyali (Gecikmesiz, {bar_end:%H:%M})\n\n"
+                f"• Giriş referansı: {sig['giris']:.2f} TL\n"
+                f"• İlk STOP: {sig['stop']:.2f} TL\n"
+                f"• Önerilen adet: {lot}"
+            )
+        except Exception:
+            pass
+
+        time.sleep(0.4)
+
+    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def main() -> None:
+    if "--test" in sys.argv:
+        send("✅ Gecikmesiz BIST 500 botu test mesajı (Düzeltilmiş Versiyon)")
+    else:
+        scan(force="--force" in sys.argv)
+
+
+if __name__ == "__main__":
+    main()
