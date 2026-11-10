@@ -1,6 +1,6 @@
 """
 BIST 5 Dakikalık Gün İçi Sinyal Botu
-(BIST 500 Tam Liste + Orijinal Strateji + Gecikmesiz TradingView Verisi)
+(BIST 500 Tam Liste + Orijinal Strateji + Hızlı Filtreleme + Gecikmesiz Veri)
 """
 
 import bisect
@@ -101,7 +101,6 @@ try:
 except Exception:
     tv = None
 
-
 def send(msg: str) -> None:
     print(msg, "\n")
     if not TOKEN or not CHAT_ID:
@@ -114,7 +113,6 @@ def send(msg: str) -> None:
         )
     except Exception:
         pass
-
 
 def fetch_tv_data(ticker: str, interval=Interval.in_5_minute, n_bars=60) -> pd.DataFrame:
     if not tv:
@@ -140,12 +138,10 @@ def fetch_tv_data(ticker: str, interval=Interval.in_5_minute, n_bars=60) -> pd.D
             time.sleep(0.5)
     return pd.DataFrame()
 
-
 def closed_bars(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
     if df.empty:
         return df
     return df[df.index + timedelta(minutes=BAR_MIN) <= now]
-
 
 class DailyOK:
     def __init__(self, daily: pd.DataFrame):
@@ -163,6 +159,9 @@ class DailyOK:
         i = bisect.bisect_right(self.dates, d) - 1
         return self.vals[i] if i >= 0 else False
 
+class DummyDailyOK:
+    def __call__(self, d):
+        return True
 
 def add_ind(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -181,8 +180,7 @@ def add_ind(df: pd.DataFrame) -> pd.DataFrame:
     df["vwap"] = pv / v.replace(0, np.nan)
     return df
 
-
-def entry_signal(df: pd.DataFrame, i: int, dok: DailyOK):
+def entry_signal(df: pd.DataFrame, i: int, dok):
     r = df.iloc[i]
     ts = df.index[i]
     end = (ts + timedelta(minutes=BAR_MIN)).time()
@@ -216,7 +214,6 @@ def entry_signal(df: pd.DataFrame, i: int, dok: DailyOK):
         "atr": atr
     }
 
-
 def new_position(sig: dict, ts: pd.Timestamp) -> dict:
     return {
         "giris": sig["giris"],
@@ -227,7 +224,6 @@ def new_position(sig: dict, ts: pd.Timestamp) -> dict:
         "bildirilen_stop": sig["stop"],
         "son_ts": ts.isoformat()
     }
-
 
 def step_position(pos: dict, o: float, h: float, l: float, atr: float):
     ev = []
@@ -255,19 +251,16 @@ def step_position(pos: dict, o: float, h: float, l: float, atr: float):
 
     return None, ev
 
-
 def load_state() -> dict:
     try:
         return json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
-
 def lot_hesapla(giris: float, risk: float) -> int:
     if risk <= 0:
         return 0
     return int(min(SERMAYE * RISK_YUZDE / risk, SERMAYE * MAX_POZ_YUZDE / giris))
-
 
 def handle_open_position(t: str, p: dict, df: pd.DataFrame, now: datetime, gun: dict) -> bool:
     son = pd.Timestamp(p["son_ts"])
@@ -309,7 +302,6 @@ def handle_open_position(t: str, p: dict, df: pd.DataFrame, now: datetime, gun: 
 
     return False
 
-
 def scan(force: bool = False, now: datetime = None) -> None:
     now = now or datetime.now(TZ)
     if not force and (now.weekday() >= 5 or not (MARKET_OPEN <= now.time() <= MARKET_CLOSE)):
@@ -326,24 +318,41 @@ def scan(force: bool = False, now: datetime = None) -> None:
     son_bar = state.setdefault("son_bar", {})
     state["gun"] = gun
 
-    print(f"BIST 500 Taranıyor (Gecikmesiz 5 Dk, {len(HISSELER)} hisse)...")
+    print(f"BIST 500 Taranıyor (Gecikmesiz 5 Dk, Akıllı Filtreleme Aktif, {len(HISSELER)} hisse)...")
 
     for t in HISSELER:
         try:
+            # Sadece 5 dakikalık veriyi çek
             raw_df = fetch_tv_data(t, Interval.in_5_minute, 60)
             if raw_df.empty:
-                time.sleep(0.2)
+                time.sleep(0.15)
                 continue
 
             df = add_ind(closed_bars(raw_df, now))
             if len(df) < DONCHIAN_N + ATR_N + 2:
-                time.sleep(0.2)
+                time.sleep(0.15)
                 continue
+                
+            # Ön Eleme Filtresi: Günlük veriyi boşuna çekme
+            i = len(df) - 1
+            r = df.iloc[i]
+            ts = df.index[i]
+            bar_end = ts + timedelta(minutes=BAR_MIN)
+            
+            c = float(r["Close"])
+            lvl = float(r["hh_prev"]) if pd.notna(r["hh_prev"]) else float("inf")
+            vol_avg = float(r["vol_avg"]) if pd.notna(r["vol_avg"]) else float("inf")
+            vwap = float(r["vwap"]) if pd.notna(r["vwap"]) else float("inf")
+            
+            # Strateji şartları 5 dk'da sağlanmıyorsa hemen atla
+            if c <= lvl or r["Volume"] < VOL_MULT * vol_avg or c <= vwap:
+                # Eğer açık pozisyon varsa onu kontrol etmek için aşağıya geçmesine izin ver
+                if t not in poz:
+                    time.sleep(0.15)
+                    continue
 
-            daily_df = fetch_tv_data(t, Interval.in_daily, 60)
-            dok = DailyOK(daily_df)
         except Exception:
-            time.sleep(0.2)
+            time.sleep(0.15)
             continue
 
         if t in poz:
@@ -352,39 +361,39 @@ def scan(force: bool = False, now: datetime = None) -> None:
                     del poz[t]
             except Exception:
                 pass
-            time.sleep(0.2)
+            time.sleep(0.15)
             continue
 
         try:
-            i = len(df) - 1
-            ts = df.index[i]
-            bar_end = ts + timedelta(minutes=BAR_MIN)
-
             if son_bar.get(t) == ts.isoformat() or (now - bar_end) > timedelta(minutes=MAX_BAR_AGE_MIN):
-                time.sleep(0.2)
+                time.sleep(0.15)
                 continue
 
             son_bar[t] = ts.isoformat()
 
             if now.time() >= FLAT_TIME or t in gun["girilen"] or len(poz) >= MAX_POZISYON:
-                time.sleep(0.2)
+                time.sleep(0.15)
                 continue
 
             if gun["r"] <= -GUNLUK_MAX_KAYIP_R:
                 if not gun["kilit"]:
                     gun["kilit"] = True
                     send("🛑 Günlük kayıp limiti doldu.")
-                time.sleep(0.2)
+                time.sleep(0.15)
                 continue
-
+            
+            # Strateji 5 dk'da sağlandıysa, artık Günlük 50 SMA onayını (DailyOK) çekebiliriz
+            daily_df = fetch_tv_data(t, Interval.in_daily, 60)
+            dok = DailyOK(daily_df)
+            
             sig = entry_signal(df, i, dok)
             if not sig:
-                time.sleep(0.2)
+                time.sleep(0.15)
                 continue
 
             lot = lot_hesapla(sig["giris"], sig["risk"])
             if lot < 1:
-                time.sleep(0.2)
+                time.sleep(0.15)
                 continue
 
             poz[t] = new_position(sig, ts)
@@ -399,14 +408,14 @@ def scan(force: bool = False, now: datetime = None) -> None:
         except Exception:
             pass
 
-        time.sleep(0.2)
+        time.sleep(0.15)
 
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main() -> None:
     if "--test" in sys.argv:
-        send("✅ Gecikmesiz BIST 500 botu test mesajı (Orijinal Strateji Korundu)")
+        send("✅ BIST 500 botu test mesajı (Akıllı Filtreli Hızlı Tarama)")
     else:
         scan(force="--force" in sys.argv)
 
