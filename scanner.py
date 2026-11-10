@@ -1,6 +1,6 @@
 """
 BIST 5 Dakikalık Gün İçi Sinyal Botu
-(BIST 500 Tam Liste + Gecikmesiz TradingView Verisi + Anti-Ban Koruması)
+(BIST 500 Tam Liste + Orijinal Strateji + Gecikmesiz TradingView Verisi)
 """
 
 import bisect
@@ -16,7 +16,6 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import requests
-
 from tvDatafeed import TvDatafeed, Interval
 
 # BIST 500 Hisselerinin Tamamı
@@ -95,7 +94,6 @@ STATE_FILE = Path(__file__).with_name("positions.json")
 TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
 CHAT_ID = "8218088218"
 
-# tvDatafeed bağlantısı ve log susturma
 logging.getLogger("tvDatafeed.main").setLevel(logging.CRITICAL)
 
 try:
@@ -139,7 +137,7 @@ def fetch_tv_data(ticker: str, interval=Interval.in_5_minute, n_bars=60) -> pd.D
                     df.index = df.index.tz_convert(TZ)
                 return df.dropna()
         except Exception:
-            time.sleep(1)
+            time.sleep(0.5)
     return pd.DataFrame()
 
 
@@ -334,18 +332,18 @@ def scan(force: bool = False, now: datetime = None) -> None:
         try:
             raw_df = fetch_tv_data(t, Interval.in_5_minute, 60)
             if raw_df.empty:
-                time.sleep(0.4)
+                time.sleep(0.2)
                 continue
 
             df = add_ind(closed_bars(raw_df, now))
             if len(df) < DONCHIAN_N + ATR_N + 2:
-                time.sleep(0.4)
+                time.sleep(0.2)
                 continue
 
             daily_df = fetch_tv_data(t, Interval.in_daily, 60)
             dok = DailyOK(daily_df)
         except Exception:
-            time.sleep(0.4)
+            time.sleep(0.2)
             continue
 
         if t in poz:
@@ -354,7 +352,7 @@ def scan(force: bool = False, now: datetime = None) -> None:
                     del poz[t]
             except Exception:
                 pass
-            time.sleep(0.4)
+            time.sleep(0.2)
             continue
 
         try:
@@ -363,30 +361,30 @@ def scan(force: bool = False, now: datetime = None) -> None:
             bar_end = ts + timedelta(minutes=BAR_MIN)
 
             if son_bar.get(t) == ts.isoformat() or (now - bar_end) > timedelta(minutes=MAX_BAR_AGE_MIN):
-                time.sleep(0.4)
+                time.sleep(0.2)
                 continue
 
             son_bar[t] = ts.isoformat()
 
             if now.time() >= FLAT_TIME or t in gun["girilen"] or len(poz) >= MAX_POZISYON:
-                time.sleep(0.4)
+                time.sleep(0.2)
                 continue
 
             if gun["r"] <= -GUNLUK_MAX_KAYIP_R:
                 if not gun["kilit"]:
                     gun["kilit"] = True
                     send("🛑 Günlük kayıp limiti doldu.")
-                time.sleep(0.4)
+                time.sleep(0.2)
                 continue
 
             sig = entry_signal(df, i, dok)
             if not sig:
-                time.sleep(0.4)
+                time.sleep(0.2)
                 continue
 
             lot = lot_hesapla(sig["giris"], sig["risk"])
             if lot < 1:
-                time.sleep(0.4)
+                time.sleep(0.2)
                 continue
 
             poz[t] = new_position(sig, ts)
@@ -401,14 +399,14 @@ def scan(force: bool = False, now: datetime = None) -> None:
         except Exception:
             pass
 
-        time.sleep(0.4)
+        time.sleep(0.2)
 
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main() -> None:
     if "--test" in sys.argv:
-        send("✅ Gecikmesiz BIST 500 botu test mesajı (Düzeltilmiş Versiyon)")
+        send("✅ Gecikmesiz BIST 500 botu test mesajı (Orijinal Strateji Korundu)")
     else:
         scan(force="--force" in sys.argv)
 
