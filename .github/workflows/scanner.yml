@@ -2,9 +2,11 @@ name: BIST 5 Dk Tarama Botu
 
 on:
   schedule:
-    # Hafta içi (1-5), TR saatiyle 10:00 - 18:00 arasına denk gelen UTC 07:00 - 15:00 saatleri arasında, her 5 dakikada bir çalışır.
     - cron: '*/5 7-15 * * 1-5'
-  workflow_dispatch: # GitHub üzerinden manuel tetikleyebilmen için buton ekler
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   scan:
@@ -30,6 +32,7 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git add positions.json
-          git commit -m "Pozisyon durumu güncellendi" || exit 0
+          touch positions.json
+          git add positions.json || true
+          git commit -m "Pozisyon durumu güncellendi" || true
           git push
