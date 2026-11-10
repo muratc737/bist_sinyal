@@ -1,37 +1,35 @@
-name: BIST 500 Intraday Bot
+name: BIST 5 Dk Tarama Botu
 
 on:
   schedule:
-    - cron: "*/15 7-15 * * 1-5"
-  workflow_dispatch:
-
-concurrency:
-  group: bist-bot
-  cancel-in-progress: false
-
-permissions:
-  contents: write
+    # Hafta içi (1-5), TR saatiyle 10:00 - 18:00 arasına denk gelen UTC 07:00 - 15:00 saatleri arasında, her 5 dakikada bir çalışır.
+    - cron: '*/5 7-15 * * 1-5'
+  workflow_dispatch: # GitHub üzerinden manuel tetikleyebilmen için buton ekler
 
 jobs:
-  run-bot:
+  scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Depoyu Çek
+        uses: actions/checkout@v4
 
       - name: Python Kur
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.10'
 
-      - name: Paketleri Yukle
-        run: pip install -r requirements.txt
-
-      - name: Botu Calistir
-        run: python scanner.py 
-
-      - name: Pozisyonlari Kaydet ve Pushla
+      - name: Kütüphaneleri Yükle
         run: |
-          git config user.name "bist-bot"
-          git config user.email "bist-bot@users.noreply.github.com"
-          git add positions.json || true
-          git diff --cached --quiet || (git commit -m "otomatik pozisyon durumu" && git push)
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Tarama Botunu Çalıştır
+        run: python scanner.py
+
+      - name: Pozisyon Durumunu (JSON) Kaydet ve Pushla
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add positions.json
+          git commit -m "Pozisyon durumu güncellendi" || exit 0
+          git push
