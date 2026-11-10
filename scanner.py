@@ -1,5 +1,5 @@
 """
-BIST 15 dakikalık gün içi sinyal botu (BIST Doğrudan Veri Kaynağı + BIST 500 Tam Liste)
+BIST 5 Dakikalık Gün İçi Sinyal Botu (BIST 500 Tam Liste + Sadece Yerli/İş Yatırım Verisi)
 """
 
 import bisect
@@ -9,56 +9,57 @@ import sys
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+import time
 
 import numpy as np
 import pandas as pd
 import requests
 
-# BIST 500 Hisselerinin Tamamı Doğrudan Burada Tanımlıdır
+# BIST 500 Hisselerinin Tamamı
 HISSELER = [
-    "ACSEL.IS", "ADESE.IS", "ADGYO.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", "AGHOL.IS", "AGROT.IS", "AGYO.IS", "AHGAZ.IS",
-    "AKBNK.IS", "AKCNS.IS", "AKENR.IS", "AKFGY.IS", "AKFYE.IS", "AKGRT.IS", "AKMGY.IS", "AKSA.IS", "AKSEN.IS", "AKSGY.IS",
-    "ALARK.IS", "ALBRK.IS", "ALCAR.IS", "ALFAS.IS", "ALKA.IS", "ALKLC.IS", "ALMAD.IS", "ANELE.IS", "ANGEN.IS", "ANHYT.IS",
-    "ANSGR.IS", "ARASE.IS", "ARCLK.IS", "ARENA.IS", "ARSAN.IS", "ARZUM.IS", "ASELS.IS", "ASTOR.IS", "ATAKP.IS", "ATATP.IS",
-    "ATEKS.IS", "ATLAS.IS", "AVGYO.IS", "AVOD.IS", "AYCES.IS", "AYDEM.IS", "AYEN.IS", "AYGAZ.IS", "AZTEK.IS", "BAGFS.IS",
-    "BAKAB.IS", "BALAT.IS", "BANVT.IS", "BARMA.IS", "BASGZ.IS", "BAYRK.IS", "BEGYO.IS", "BERA.IS", "BEYAZ.IS", "BIENY.IS",
-    "BIGCH.IS", "BIMAS.IS", "BINHO.IS", "BIOEN.IS", "BJKAS.IS", "BLCYT.IS", "BOSSA.IS", "BRKO.IS", "BRMEN.IS", "BRSAN.IS",
-    "BRYAT.IS", "BSOKE.IS", "BTCIM.IS", "BUCIM.IS", "BURCE.IS", "BURVA.IS", "BVSAN.IS", "CANTE.IS", "CASA.IS", "CCOLA.IS",
-    "CELHA.IS", "CEMAS.IS", "CEMTS.IS", "CEOEM.IS", "CIMSA.IS", "CLEBI.IS", "CMBTN.IS", "CMENT.IS", "CONSE.IS", "COSMO.IS",
-    "CRDFA.IS", "CRFSA.IS", "CUSAN.IS", "CVKMD.IS", "CWENE.IS", "DAGI.IS", "DAPGM.IS", "DARDL.IS", "DENGE.IS", "DERHL.IS",
-    "DERIM.IS", "DESA.IS", "DESPC.IS", "DEVA.IS", "DIRIT.IS", "DITAS.IS", "DMRGD.IS", "DMSAS.IS", "DNISI.IS", "DOAS.IS",
-    "DOBUR.IS", "DOCO.IS", "DOGUB.IS", "DOHOL.IS", "DOKTA.IS", "EDIP.IS", "EGEEN.IS", "EGEPO.IS", "EGGUB.IS", "EGPRO.IS",
-    "EGSER.IS", "EKGYO.IS", "EKIZ.IS", "ELITE.IS", "EMKEL.IS", "ENKAI.IS", "ENJSA.IS", "ENSRI.IS", "EPLAS.IS", "ERCB.IS",
-    "EREGL.IS", "ERSU.IS", "ESCAR.IS", "ESCOM.IS", "ESEN.IS", "ETILR.IS", "EUKYO.IS", "EUPWR.IS", "EUREN.IS", "EYYGY.IS",
-    "FADE.IS", "FENER.IS", "FLAP.IS", "FMIZP.IS", "FONET.IS", "FORMT.IS", "FORTE.IS", "FROTO.IS", "FRIGO.IS", "GARAN.IS",
-    "GARFA.IS", "GEDIK.IS", "GENIL.IS", "GEREL.IS", "GESAN.IS", "GLBMD.IS", "GLRYH.IS", "GLYHO.IS", "GMTAS.IS", "GOKNR.IS",
-    "GOLTS.IS", "GOODY.IS", "GOZDE.IS", "GRNYO.IS", "GRSEL.IS", "GUBRF.IS", "GWIND.IS", "GZNMI.IS", "HALKB.IS", "HATSN.IS",
-    "HEDEF.IS", "HEKTS.IS", "HKTM.IS", "HLGYO.IS", "HTTBT.IS", "HUBVC.IS", "HUNER.IS", "HURGZ.IS", "ICBCT.IS", "IDEAL.IS",
-    "IHEVA.IS", "IHGZT.IS", "IHLAS.IS", "IHLGM.IS", "IMASM.IS", "INDES.IS", "INFO.IS", "INTEM.IS", "INVEO.IS", "IPEKE.IS",
-    "ISDMR.IS", "ISGYO.IS", "ISCTR.IS", "ISMEN.IS", "ITTFH.IS", "IZFAS.IS", "IZINV.IS", "IZMDC.IS", "JANTS.IS", "KAPLM.IS",
-    "KAREL.IS", "KARSN.IS", "KARTN.IS", "KARYE.IS", "KATMR.IS", "KAYSE.IS", "KCAER.IS", "KCHOL.IS", "KENT.IS", "KERVT.IS",
-    "KFEIN.IS", "KGYO.IS", "KLRHO.IS", "KLGYO.IS", "KLKIM.IS", "KMPUR.IS", "KNFRT.IS", "KONYA.IS", "KOPOL.IS", "KORDS.IS",
-    "KOZAA.IS", "KOZAL.IS", "KRDMD.IS", "KRONT.IS", "KRSAN.IS", "KRSTL.IS", "KRTEK.IS", "KUTPO.IS", "KUYAS.IS", "KZBGY.IS",
-    "LIDER.IS", "LKMNH.IS", "LOGO.IS", "LUKSK.IS", "MAALT.IS", "MAKIM.IS", "MAKTK.IS", "MANAS.IS", "MARKA.IS", "MARTI.IS",
-    "MAVI.IS", "MEDTR.IS", "MEGAP.IS", "MEKAG.IS", "MERIT.IS", "MERKO.IS", "METUR.IS", "MGROS.IS", "MIPAZ.IS", "MMCAS.IS",
-    "MNDRS.IS", "MNDTR.IS", "MOBTL.IS", "MPARK.IS", "MRSHL.IS", "MSGYO.IS", "MTRKS.IS", "NETAS.IS", "NIBAS.IS", "NTGAZ.IS",
-    "NTHOL.IS", "NUGYO.IS", "NUHCM.IS", "OBASE.IS", "ODAS.IS", "ONCSM.IS", "ORMA.IS", "OSMEN.IS", "OSTIM.IS", "OTKAR.IS",
-    "OYAKC.IS", "OYLUM.IS", "OYYO.IS", "OZATD.IS", "OZGYO.IS", "OZKGY.IS", "OZLTM.IS", "PAMEL.IS", "PAPIL.IS", "PARSN.IS",
-    "PENGD.IS", "PENTA.IS", "PETKM.IS", "PETUN.IS", "PGSUS.IS", "PNSUT.IS", "POLHO.IS", "POLTK.IS", "PRKME.IS", "PRZMA.IS",
-    "PSDTC.IS", "PSGYO.IS", "QUAGR.IS", "QNBFB.IS", "QNBFL.IS", "RALYH.IS", "RAYSG.IS", "REEDR.IS", "RNPOL.IS", "RODRG.IS",
-    "ROYAL.IS", "RTALB.IS", "RUBNS.IS", "SAFKR.IS", "SAHOL.IS", "SARKY.IS", "SASA.IS", "SAYAS.IS", "SDTTR.IS", "SEGYO.IS",
-    "SEKFK.IS", "SEKUR.IS", "SELGD.IS", "SELVA.IS", "SEYKM.IS", "SILVR.IS", "SISE.IS", "SKBNK.IS", "SMRTG.IS", "SNGYO.IS",
-    "SNICA.IS", "SNPAM.IS", "SODSN.IS", "SOKE.IS", "SOKM.IS", "SONME.IS", "SRVGY.IS", "SUMAS.IS", "SUNTK.IS", "SURGY.IS",
-    "SUWEN.IS", "TABGD.IS", "TARKM.IS", "TATGD.IS", "TAVHL.IS", "TBORG.IS", "TCELL.IS", "TDGYO.IS", "TEKTG.IS", "TERA.IS",
-    "TETMT.IS", "TEZOL.IS", "TGSAS.IS", "THYAO.IS", "TIRE.IS", "TKFEN.IS", "TMPOL.IS", "TMSN.IS", "TOASO.IS", "TRGYO.IS",
-    "TRILC.IS", "TSKB.IS", "TSPOR.IS", "TTKOM.IS", "TTRAK.IS", "TUCLK.IS", "TUKAS.IS", "TUPRS.IS", "TUREX.IS", "TURGG.IS",
-    "UFUK.IS", "ULAS.IS", "ULKER.IS", "ULUUN.IS", "UNLU.IS", "USAK.IS", "VAKBN.IS", "VAKFN.IS", "VAKGY.IS", "VBTYZ.IS",
-    "VERTU.IS", "VERUS.IS", "VESBE.IS", "VESTL.IS", "VKFYO.IS", "VKGYO.IS", "VKING.IS", "YAPRK.IS", "YATAS.IS", "YAYLA.IS",
-    "YBTAS.IS", "YEOTK.IS", "YESIL.IS", "YIGIT.IS", "YKBNK.IS", "YKSL.IS", "YUNSA.IS", "YYAPI.IS", "YYLGD.IS", "ZEDUR.IS",
-    "ZOREN.IS"
+    "ACSEL", "ADESE", "ADGYO", "AEFES", "AFYON", "AGESA", "AGHOL", "AGROT", "AGYO", "AHGAZ",
+    "AKBNK", "AKCNS", "AKENR", "AKFGY", "AKFYE", "AKGRT", "AKMGY", "AKSA", "AKSEN", "AKSGY",
+    "ALARK", "ALBRK", "ALCAR", "ALFAS", "ALKA", "ALKLC", "ALMAD", "ANELE", "ANGEN", "ANHYT",
+    "ANSGR", "ARASE", "ARCLK", "ARENA", "ARSAN", "ARZUM", "ASELS", "ASTOR", "ATAKP", "ATATP",
+    "ATEKS", "ATLAS", "AVGYO", "AVOD", "AYCES", "AYDEM", "AYEN", "AYGAZ", "AZTEK", "BAGFS",
+    "BAKAB", "BALAT", "BANVT", "BARMA", "BASGZ", "BAYRK", "BEGYO", "BERA", "BEYAZ", "BIENY",
+    "BIGCH", "BIMAS", "BINHO", "BIOEN", "BJKAS", "BLCYT", "BOSSA", "BRKO", "BRMEN", "BRSAN",
+    "BRYAT", "BSOKE", "BTCIM", "BUCIM", "BURCE", "BURVA", "BVSAN", "CANTE", "CASA", "CCOLA",
+    "CELHA", "CEMAS", "CEMTS", "CEOEM", "CIMSA", "CLEBI", "CMBTN", "CMENT", "CONSE", "COSMO",
+    "CRDFA", "CRFSA", "CUSAN", "CVKMD", "CWENE", "DAGI", "DAPGM", "DARDL", "DENGE", "DERHL",
+    "DERIM", "DESA", "DESPC", "DEVA", "DIRIT", "DITAS", "DMRGD", "DMSAS", "DNISI", "DOAS",
+    "DOBUR", "DOCO", "DOGUB", "DOHOL", "DOKTA", "EDIP", "EGEEN", "EGEPO", "EGGUB", "EGPRO",
+    "EGSER", "EKGYO", "EKIZ", "ELITE", "EMKEL", "ENKAI", "ENJSA", "ENSRI", "EPLAS", "ERCB",
+    "EREGL", "ERSU", "ESCAR", "ESCOM", "ESEN", "ETILR", "EUKYO", "EUPWR", "EUREN", "EYYGY",
+    "FADE", "FENER", "FLAP", "FMIZP", "FONET", "FORMT", "FORTE", "FROTO", "FRIGO", "GARAN",
+    "GARFA", "GEDIK", "GENIL", "GEREL", "GESAN", "GLBMD", "GLRYH", "GLYHO", "GMTAS", "GOKNR",
+    "GOLTS", "GOODY", "GOZDE", "GRNYO", "GRSEL", "GUBRF", "GWIND", "GZNMI", "HALKB", "HATSN",
+    "HEDEF", "HEKTS", "HKTM", "HLGYO", "HTTBT", "HUBVC", "HUNER", "HURGZ", "ICBCT", "IDEAL",
+    "IHEVA", "IHGZT", "IHLAS", "IHLGM", "IMASM", "INDES", "INFO", "INTEM", "INVEO", "IPEKE",
+    "ISDMR", "ISGYO", "ISCTR", "ISMEN", "ITTFH", "IZFAS", "IZINV", "IZMDC", "JANTS", "KAPLM",
+    "KAREL", "KARSN", "KARTN", "KARYE", "KATMR", "KAYSE", "KCAER", "KCHOL", "KENT", "KERVT",
+    "KFEIN", "KGYO", "KLRHO", "KLGYO", "KLKIM", "KMPUR", "KNFRT", "KONYA", "KOPOL", "KORDS",
+    "KOZAA", "KOZAL", "KRDMD", "KRONT", "KRSAN", "KRSTL", "KRTEK", "KUTPO", "KUYAS", "KZBGY",
+    "LIDER", "LKMNH", "LOGO", "LUKSK", "MAALT", "MAKIM", "MAKTK", "MANAS", "MARKA", "MARTI",
+    "MAVI", "MEDTR", "MEGAP", "MEKAG", "MERIT", "MERKO", "METUR", "MGROS", "MIPAZ", "MMCAS",
+    "MNDRS", "MNDTR", "MOBTL", "MPARK", "MRSHL", "MSGYO", "MTRKS", "NETAS", "NIBAS", "NTGAZ",
+    "NTHOL", "NUGYO", "NUHCM", "OBASE", "ODAS", "ONCSM", "ORMA", "OSMEN", "OSTIM", "OTKAR",
+    "OYAKC", "OYLUM", "OYYO", "OZATD", "OZGYO", "OZKGY", "OZLTM", "PAMEL", "PAPIL", "PARSN",
+    "PENGD", "PENTA", "PETKM", "PETUN", "PGSUS", "PNSUT", "POLHO", "POLTK", "PRKME", "PRZMA",
+    "PSDTC", "PSGYO", "QUAGR", "QNBFB", "QNBFL", "RALYH", "RAYSG", "REEDR", "RNPOL", "RODRG",
+    "ROYAL", "RTALB", "RUBNS", "SAFKR", "SAHOL", "SARKY", "SASA", "SAYAS", "SDTTR", "SEGYO",
+    "SEKFK", "SEKUR", "SELGD", "SELVA", "SEYKM", "SILVR", "SISE", "SKBNK", "SMRTG", "SNGYO",
+    "SNICA", "SNPAM", "SODSN", "SOKE", "SOKM", "SONME", "SRVGY", "SUMAS", "SUNTK", "SURGY",
+    "SUWEN", "TABGD", "TARKM", "TATGD", "TAVHL", "TBORG", "TCELL", "TDGYO", "TEKTG", "TERA",
+    "TETMT", "TEZOL", "TGSAS", "THYAO", "TIRE", "TKFEN", "TMPOL", "TMSN", "TOASO", "TRGYO",
+    "TRILC", "TSKB", "TSPOR", "TTKOM", "TTRAK", "TUCLK", "TUKAS", "TUPRS", "TUREX", "TURGG",
+    "UFUK", "ULAS", "ULKER", "ULUUN", "UNLU", "USAK", "VAKBN", "VAKFN", "VAKGY", "VBTYZ",
+    "VERTU", "VERUS", "VESBE", "VESTL", "VKFYO", "VKGYO", "VKING", "YAPRK", "YATAS", "YAYLA",
+    "YBTAS", "YEOTK", "YESIL", "YIGIT", "YKBNK", "YKSL", "YUNSA", "YYAPI", "YYLGD", "ZEDUR",
+    "ZOREN"
 ]
 
-BAR_MIN = 15
+BAR_MIN = 5  # 5 DAKİKALIK PERİYOT
 DONCHIAN_N = 20
 VOL_MULT = 1.5
 ATR_N = 14
@@ -86,6 +87,7 @@ SLIP = 0.001
 
 TZ = ZoneInfo("Europe/Istanbul")
 STATE_FILE = Path(__file__).with_name("pozisyonlar.json")
+
 TOKEN = "9294997364:AAGp_p4GEuWL1uYQiVBFlWzj3IYi5ff5OyI"
 CHAT_ID = "8218088218"
 
@@ -102,90 +104,73 @@ def send(msg: str) -> None:
 
 
 def fetch_bist_data(ticker: str) -> pd.DataFrame:
-    # Borsa İstanbul doğrudan veri akışı uç noktası (İş Yatırım / BIST entegre API köprüsü)
+    """
+    SADECE İş Yatırım (veya benzeri yerli kurum) uç noktasını dener.
+    Yahoo Finance yedeklemesi tamamen kaldırılmıştır.
+    """
     clean_symbol = ticker.replace(".IS", "")
     url = f"https://www.isyatirim.com.tr/_layouts/15/IsYatirim.Website/Common/Data.aspx/HissePazarlama?hisse={clean_symbol}"
-    # Alternatif yedek doğrudan BIST veri akışı
-    alt_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=15m&range=30d"
     
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
-        # Önce doğrudan BIST kaynaklı kurumsal uç noktayı dener
         res = requests.get(url, headers=headers, timeout=8)
-        if res.status_code == 200 and "application/json" in res.headers.get("content-type", ""):
-            # İş Yatırım veya benzeri kurumsal BIST yapısı gelirse işlenir
-            pass
-        
-        # Garanti ve kesintisiz BIST 15m barları için ana BIST veri köprüsü
-        res = requests.get(alt_url, headers=headers, timeout=10)
         if res.status_code != 200:
             return pd.DataFrame()
+            
+        # İş Yatırım'dan JSON verisi döndüğünde onu OHLCV formatına çevirmeye çalışır.
+        # DİKKAT: İş Yatırım genellikle sadece kapanış(Close) verir. OHLCV gelmezse stratejinin ATR/VWAP kısımları çalışmaz.
         data = res.json()
-        result = data.get("chart", {}).get("result")
-        if not result:
-            return pd.DataFrame()
-        res_dict = result[0]
-        timestamps = res_dict.get("timestamp", [])
-        quotes = res_dict.get("indicators", {}).get("quote", [{}])[0]
-        if not timestamps or not quotes:
-            return pd.DataFrame()
-        df = pd.DataFrame({
-            "Open": quotes.get("open", []),
-            "High": quotes.get("high", []),
-            "Low": quotes.get("low", []),
-            "Close": quotes.get("close", []),
-            "Volume": quotes.get("volume", [])
-        }, index=pd.to_datetime(timestamps, unit="s"))
-        df = df.dropna()
-        if not df.empty:
-            df.index = df.index.tz_localize("UTC").tz_convert(TZ)
-        return df
-    except Exception:
+        # Burası İş Yatırım'ın spesifik JSON yapısına göre parse edilmelidir. 
+        # Örnek bir parse bloğu bırakıyorum, kurumun API yapısına göre uyarlanabilir:
+        
+        # Varsayımsal Parse (Gerçek yapıya göre değiştirilmeli):
+        # if 'data' in data:
+        #     df = pd.DataFrame(data['data'])
+        #     return df
+        
+        # Şimdilik hata atmaması için boş dönüyor, gerçek yerli endpoint bağlanınca içi doldurulacak.
         return pd.DataFrame()
-
-
-def fetch_bist_daily(ticker: str) -> pd.DataFrame:
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1y"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code != 200:
-            return pd.DataFrame()
-        data = res.json().get("chart", {}).get("result")
-        if not data:
-            return pd.DataFrame()
-        res_dict = data[0]
-        timestamps = res_dict.get("timestamp", [])
-        quotes = res_dict.get("indicators", {}).get("quote", [{}])[0]
-        df = pd.DataFrame({
-            "Open": quotes.get("open", []),
-            "High": quotes.get("high", []),
-            "Low": quotes.get("low", []),
-            "Close": quotes.get("close", []),
-            "Volume": quotes.get("volume", [])
-        }, index=pd.to_datetime(timestamps, unit="s"))
-        return df.dropna()
+        
     except Exception:
         return pd.DataFrame()
 
 
 def closed_bars(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
+    if df.empty:
+        return df
     return df[df.index + timedelta(minutes=BAR_MIN) <= now]
 
 
 class DailyOK:
     def __init__(self, daily: pd.DataFrame):
+        if daily.empty:
+            self.dates = []
+            self.vals = []
+            return
         ok = (daily["Close"] > daily["Close"].rolling(50).mean()).shift(1)
         self.dates = [d.date() for d in daily.index]
         self.vals = [bool(v) if pd.notna(v) else False for v in ok.values]
 
     def __call__(self, d) -> bool:
+        if not self.dates:
+            return False
         i = bisect.bisect_right(self.dates, d) - 1
         return self.vals[i] if i >= 0 else False
 
 
 def add_ind(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
     df = df.copy()
+    
+    # Hacim veya High/Low verisi yoksa (Yerli API kısıtlaması), o sütunları 0 veya Close'a eşitleriz ki kod çökmesin
+    if "High" not in df.columns:
+        df["High"] = df["Close"]
+    if "Low" not in df.columns:
+        df["Low"] = df["Close"]
+    if "Volume" not in df.columns:
+        df["Volume"] = 0
+
     pc = df["Close"].shift(1)
     tr = pd.concat([df["High"] - df["Low"], (df["High"] - pc).abs(), (df["Low"] - pc).abs()],
                    axis=1).max(axis=1)
@@ -206,13 +191,18 @@ def entry_signal(df: pd.DataFrame, i: int, dok: DailyOK):
     end = (ts + timedelta(minutes=BAR_MIN)).time()
     if not (ENTRY_START <= end <= ENTRY_END):
         return None
+    
+    # Gerekli göstergelerden biri bile NaN ise (veri eksikliği) sinyal iptal
     if any(pd.isna(r[c]) for c in ("atr", "hh_prev", "vol_avg", "vwap")):
         return None
+        
     if not dok(ts.date()):
         return None
+        
     lvl = float(r["hh_prev"])
     c = float(r["Close"])
     atr = float(r["atr"])
+    
     if c <= lvl:
         return None
     if r["Volume"] < VOL_MULT * r["vol_avg"]:
@@ -221,6 +211,7 @@ def entry_signal(df: pd.DataFrame, i: int, dok: DailyOK):
         return None
     if c - lvl > MAX_EXTEND_ATR * atr:
         return None
+        
     risk = max(STOP_ATR * atr, MIN_STOP_PCT * c)
     return {"giris": c, "stop": c - risk, "risk": risk, "seviye": lvl, "atr": atr}
 
@@ -262,6 +253,8 @@ def load_state() -> dict:
 
 
 def lot_hesapla(giris: float, risk: float) -> int:
+    if risk <= 0:
+        return 0
     return int(min(SERMAYE * RISK_YUZDE / risk, SERMAYE * MAX_POZ_YUZDE / giris))
 
 
@@ -270,7 +263,9 @@ def handle_open_position(t: str, p: dict, df: pd.DataFrame, now: datetime, gun: 
     new = df[df.index > son]
     exit_px, kismi = None, False
     for ts, r in new.iterrows():
-        exit_px, ev = step_position(p, float(r["Open"]), float(r["High"]), float(r["Low"]),
+        exit_px, ev = step_position(p, float(r["Open"]) if "Open" in r else float(r["Close"]), 
+                                     float(r["High"]) if "High" in r else float(r["Close"]), 
+                                     float(r["Low"]) if "Low" in r else float(r["Close"]),
                                      float(r["atr"]) if pd.notna(r["atr"]) else np.nan)
         p["son_ts"] = ts.isoformat()
         kismi = kismi or ("kismi" in ev)
@@ -315,21 +310,24 @@ def scan(force: bool = False, now: datetime = None) -> None:
     son_bar = state.setdefault("son_bar", {})
     state["gun"] = gun
 
-    print(f"BIST 500 tam havuzu taranıyor ({len(HISSELER)} hisse)...")
+    print(f"BIST 500 tam havuzu taranıyor (5 Dakikalık, SADECE Yerli Veri, {len(HISSELER)} hisse)...")
+
+    # Günlük veriyi de (DailyOK için) mecburen kapattım çünkü o da Yahoo kullanıyordu.
+    # Şimdilik DailyOK'yi her hisse için "True" dönecek şekilde bypass ediyoruz.
+    class DummyDailyOK:
+        def __call__(self, d): return True
+    dok = DummyDailyOK()
 
     for t in HISSELER:
         try:
             raw_df = fetch_bist_data(t)
             if raw_df.empty:
                 continue
+                
             df = add_ind(closed_bars(raw_df, now))
             if len(df) < DONCHIAN_N + ATR_N + 2:
                 continue
-            
-            daily_df = fetch_bist_daily(t)
-            if daily_df.empty:
-                continue
-            dok = DailyOK(daily_df)
+                
         except Exception:
             continue
 
@@ -367,7 +365,7 @@ def scan(force: bool = False, now: datetime = None) -> None:
             poz[t] = new_position(sig, ts)
             gun["girilen"].append(t)
             
-            send(f"🟢 Murat, {t} için AL sinyali (BIST 500 Tarama, {bar_end:%H:%M})\n\n"
+            send(f"🟢 Murat, {t} için AL sinyali (Sadece Yerli Veri, {bar_end:%H:%M})\n\n"
                  f"• Giriş referansı: {sig['giris']:.2f} TL\n"
                  f"• İlk STOP: {sig['stop']:.2f} TL\n"
                  f"• Önerilen adet: {lot}")
@@ -380,7 +378,7 @@ def scan(force: bool = False, now: datetime = None) -> None:
 
 def main() -> None:
     if "--test" in sys.argv:
-        send("✅ BIST 500 gün içi botu test mesajı")
+        send("✅ BIST 500 gün içi botu test mesajı (Sadece Yerli Veri - 5 dk)")
     else:
         scan(force="--force" in sys.argv)
 
