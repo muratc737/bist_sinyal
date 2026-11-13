@@ -361,13 +361,9 @@
     "ZOREN": "2026-11-10T13:35:00+03:00"
   },
   "gun": {
-    "tarih": "2026-11-12",
-    "r": -0.81,
-    "girilen": [
-      "CIMSA",
-      "DOCO",
-      "AHGAZ"
-    ],
+    "tarih": "2026-11-13",
+    "r": 0.0,
+    "girilen": [],
     "kilit": false
   }
 }
